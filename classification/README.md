@@ -46,8 +46,8 @@ To train student models with FCFD, run the following command:
 # specify the random seed to 113
 . experiments/cifar/train_lr0.05.sh resnet8x4 resnet32x4 113
 ```
-
-*Your may refer to the `*.sh` files for details and modify them depending on your needs.* 
++ Your can modify the `*.sh` and the `*.yaml` files in [experiments/cifar](experiments/cifar) for custumized experiments.
++ See [ConfigExample.yaml](experiments/cifar/ConfigExample.yaml) to know the meaning of each configurable term.
 
 The following is a list of all experiments:
 
