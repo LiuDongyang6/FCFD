@@ -1,52 +1,48 @@
-import random
-
 import sys
 import os
 sys.path.append(os.path.abspath(__file__).rsplit('/', 2)[0])
-from utils import prepare_dirs, save_config
-from data_loader import get_test_loader, get_train_loader
+import random
 import numpy as np
-import torch
-from torch import Tensor
-import torch.nn as nn
-from torch.autograd import Variable
-import torch.optim as optim
-import torch.nn.functional as F
 import time
 import shutil
-from utils import accuracy, AverageMeter, LazyAverageMeterDict, print_and_write
-import models
 import argparse
 from easydict import EasyDict as edict
 import yaml
+import datetime
+
+import torch
+from torch import Tensor
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 from torchsummary import summary
 from timm.utils import NativeScaler
-import datetime
 from timm.scheduler import CosineLRScheduler
 
-arg_lists = []
-parser = argparse.ArgumentParser(description='mobilenet_classification')
+from utils import prepare_dirs, save_config
+from data_loader import get_test_loader, get_train_loader
+from utils import accuracy, AverageMeter, LazyAverageMeterDict, print_and_write
+import models
+
+
+parser = argparse.ArgumentParser(description='FCFD CIFAR experiment')
 USE_FP16 = False
 
 
 def str2bool(v):
     return v.lower() in ('true', '1')
 
-
-def add_argument_group(name):
-    arg = parser.add_argument_group(name)
-    arg_lists.append(arg)
-    return arg
-
 # data params
-data_arg = add_argument_group('Data Params')
+data_arg = parser.add_argument_group('Data Params')
 data_arg.add_argument('--num_classes', type=int, default=100,
                       help='Number of classes to classify')
 data_arg.add_argument('--batch_size', type=int, default=64,
                       help='# of images in each batch of data')
+data_arg.add_argument('--data_dir', type=str, default=os.path.join(os.environ['HOME'],'data/cifar100'),
+                      help='Directory in which data is stored')
 
 # training params
-train_arg = add_argument_group('Training Params')
+train_arg = parser.add_argument_group('Training Params')
 train_arg.add_argument('--is_train', type=str2bool, default=True,
                        help='Whether to train or test the model')
 train_arg.add_argument('--momentum', type=float, default=0.9,
@@ -63,36 +59,34 @@ train_arg.add_argument('--gamma', type=float, default=0.1,
                        help='value of learning rate decay')
 train_arg.add_argument('--scheduler', type=str, default='step', choices=['step', 'cos'],
                        help='value of learning rate decay')
-
-# other params
-misc_arg = add_argument_group('Misc.')
-misc_arg.add_argument('--random_seed', type=int, default=0,
-                      help='Seed to ensure reproducibility')
-misc_arg.add_argument('--data_dir', type=str, default=os.path.join(os.environ['HOME'],'data/cifar100'),
-                      help='Directory in which data is stored')
-misc_arg.add_argument('--output_dir', type=str, default='./output/',
-                      help='output directory')
-misc_arg.add_argument('--resume', default=None, type=str,
+train_arg.add_argument('--resume', default=None, type=str,
                       help='If not None, resume from this checkpoint')
-misc_arg.add_argument('--save_name', type=str, default='model',
-                      help='Name of the model to save as')
-misc_arg.add_argument('--student', type=str, required=True,
-                      help='student model')
-misc_arg.add_argument('--teacher', type=str, default=None,
-                      help='teacher model')
-misc_arg.add_argument('--teacher_ckpt', type=str, default=None,
-                      help='pretrained teacher path')
-misc_arg.add_argument('--config', type=str, default=None,
-                      help='config yaml file')
-misc_arg.add_argument('--FP16', default=True, action="store_true",
+train_arg.add_argument('--FP16', action="store_true",
                       help='if use FP16 for training')
 
-fcfd_arg = add_argument_group('FCFD Params')
+# FCFD params
+fcfd_arg = parser.add_argument_group('FCFD Params')
 fcfd_arg.add_argument('--extra_paths', type=int, default=2,
                       help="number of extra paths for training")
 fcfd_arg.add_argument('--extra_type', type=str, default="bi", choices=["bi", "s2t", 't2s', 'nomix'],
-                      help="extra path choices")
+                      help="extra path choice")
+fcfd_arg.add_argument('--student', type=str, required=True,
+                      help='student model')
+fcfd_arg.add_argument('--teacher', type=str, default=None,
+                      help='teacher model')
+fcfd_arg.add_argument('--teacher_ckpt', type=str, default=None,
+                      help='pretrained teacher path')
 
+# other params
+misc_arg = parser.add_argument_group('Misc.')
+misc_arg.add_argument('--random_seed', type=int, default=0,
+                      help='Seed to ensure reproducibility')
+misc_arg.add_argument('--output_dir', type=str, default='./output/',
+                      help='output directory')
+misc_arg.add_argument('--save_name', type=str, default='model',
+                      help='Name of the model to save as')
+misc_arg.add_argument('--config', type=str, default=None,
+                      help='config yaml file')
 
 def get_config():
     args, unparsed = parser.parse_known_args()
@@ -128,7 +122,7 @@ def main():
     test_data_loader = get_test_loader(
         config.data_dir, config.batch_size, **kwargs
     )
-    
+
     if config.is_train:
         # ensure directories are setup
         prepare_dirs(config)
@@ -155,23 +149,7 @@ def main():
 
 
 class Trainer(object):
-    """
-    Trainer encapsulates all the logic necessary for
-    training the MobileNet Model.
-
-    All hyperparameters are provided by the user in the
-    config file.
-    """
-
     def __init__(self, config, data_loader):
-        """
-        Construct a new Trainer instance.
-
-        Args
-        ----
-        - config: object containing command line arguments.
-        - data_loader: data iterator
-        """
         self.config = config
 
         # data params
@@ -295,14 +273,6 @@ class Trainer(object):
                                      )
 
     def train_one_epoch(self, epoch):
-        """
-        Train the model for 1 epoch of the training set.
-
-        An epoch corresponds to one full pass through the entire
-        training set in successive mini-batches.
-
-        This is used by train() and should not be called manually.
-        """
         default_T = self.config.T
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -443,7 +413,6 @@ class Trainer(object):
         for _, (images, labels) in enumerate(self.valid_loader):
             images, labels = images.cuda(), labels.cuda()
 
-            # forward pass
             outputs, full_paths = self.model(images, val=True)
 
             for i in range(len(outputs)):
@@ -458,11 +427,6 @@ class Trainer(object):
 
     @torch.no_grad()
     def test(self):
-        """
-        Test the model on the held-out test data.
-        This function should only be called at the very
-        end once the model has finished training.
-        """
         top1 = AverageMeter()
         top5 = AverageMeter()
 
@@ -498,14 +462,6 @@ class Trainer(object):
         )
 
     def save_checkpoint(self, state, is_best, best_model_idx=None):
-        """
-        Save a copy of the model so that it can be loaded at a future
-        date. This function is used when the model is being evaluated
-        on the test data.
-
-        If this model has reached the best validation accuracy thus
-        far, a seperate file with the suffix `best` is created.
-        """
         # print("[*] Saving model to {}".format(self.ckpt_dir))
 
         filename = self.model_prefix + '_ckpt.pth.tar'
@@ -541,7 +497,6 @@ class Trainer(object):
         return cur_val
 
     def _loss_kl(self, src, target, T=1):
-        # note that target nolonger have detach
         return F.kl_div(F.log_softmax(src / T, dim=1), F.softmax(target.detach() / T, dim=1),
                         reduction='batchmean') * T * T
 

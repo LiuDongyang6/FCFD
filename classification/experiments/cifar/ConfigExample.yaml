@@ -1,6 +1,6 @@
 # This example file introduces the meaning of all configurable terms
 
-# <START: teacher loss config>
+# <START: teacher hard label and KL-Divergence loss config>
 # loss configs for training the teacher in the ONLINE distillation setting (i.e., student and teacher learning mutually from each other from scratch)
 # DO NOT modify them for offline distillation
 loss_teacher:
@@ -17,11 +17,11 @@ loss_teacher:
     - # teacher learn from mixture
       x: [0]
       y: [0]
-# <END: teacher loss config>
+# <END: teacher hard label and KL-Divergence loss config>
 
-# <START: student loss config>
+# <START: student hard label and KL-Divergence loss config>
 loss_student:
-  label: # weight for 'student learn from hard task label' loss
+  label: # weight for "student learn from hard task label" loss
     # support mutable loss weight
     x: [0, 30, 50]
     y: [1.0, 2.0, 5.0] # weight is 1.0 in epoch range [0,30), 2.0 in epoch range [30,50), and 5.0 afterwards
@@ -36,11 +36,11 @@ loss_student:
     - # student learn from mixure paths
       x: [0]
       y: [0]
-# <END: student loss config>
+# <END: student hard label and KL-Divergence loss config>
 
-# <START: mixture path (student-bridge-teacher or teacher-bridge-student) loss config>
+# <START: mixture path (student-bridge-teacher or teacher-bridge-student) hard label and KL-Divergence loss config>
 loss_mixture:
-  label: # weight for 'mixture learn from hard task label' loss
+  label: # weight for "mixture learn from hard task label" loss
     x: [0]
     y: [0]
   kl_student:
@@ -54,7 +54,7 @@ loss_mixture:
     - # mixture learn from mixture
       x: [0]
       y: [0]
-# <END: student loss config>
+# <END: mixture hard label and KL-Divergence loss config>
 
 T: 8 # global default temperature value for KL-Divergence losses
 weight_l2: 5 # weight for L2-based losses, including L_app, L_func (except the last KL-Divergence term)
